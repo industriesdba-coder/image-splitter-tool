@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Image Splitter</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Load JSZip for ZIP file creation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <!-- Load Inter font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #4f46e5; /* Indigo-600 */
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a; /* Slate-900 */
+            color: #f8fafc; /* Slate-50 */
+        }
+        /* Custom scrollbar for better look */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(148, 163, 184, 0.4); /* Slate-400 with opacity */
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        /* Style for the canvas container to enable overlay */
+        #canvas-container {
+            position: relative;
+            max-width: 900px;
+            margin: 0 auto;
+            border: 2px solid var(--primary-color);
+            border-radius: 0.5rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            aspect-ratio: 16/9; /* Initial aspect ratio, will be updated by image */
+        }
+        #image-canvas, #overlay-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        #overlay-canvas {
+            cursor: grab;
+            z-index: 10;
+        }
+        .drag-area {
+            border: 3px dashed var(--primary-color);
+            transition: all 0.2s;
+        }
+        .drag-area.active {
+            background-color: rgba(79, 70, 229, 0.1);
+        }
+        .message-box {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            z-index: 50;
+            transition: opacity 0.3s, transform 0.3s;
+            transform: translateY(-100%);
+            opacity: 0;
+        }
+        .message-box.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8 min-h-screen">
+
+    <div id="message-box" class="message-box p-4 rounded-lg shadow-xl text-sm max-w-sm"></div>
+
+    <div class="max-w-7xl mx-auto">
+        <h1 class="text-4xl font-extrabold text-center mb-6 text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-600">
+            Image Splitter & Puzzle Creator
+        </h1>
+        <p class="text-center text-slate-400 mb-10">
+            Create stunning image grids, panoramic strips, or custom asymmetric layouts for social media and printing.
+        </p>
+
+        <!-- Main Layout -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Column 1: Controls -->
+            <div class="lg:col-span-1 space-y-6">
+                
+                <!-- File Upload Area -->
+                <div id="drag-area" class="drag-area p-8 rounded-xl text-center cursor-pointer hover:bg-slate-800 transition">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-10 h-10 mx-auto mb-3 text-indigo-400">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
+                    </svg>
+                    <p class="font-semibold text-lg">Drag & Drop or Paste Image Here</p>
+                    <p class="text-sm text-slate-400">PNG, JPEG, WebP. Max 10MB.</p>
+                    <input type="file" id="file-input" accept="image/png, image/jpeg, image/webp" class="hidden">
+                    <button onclick="document.getElementById('file-input').click()" class="mt-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-white font-medium transition shadow-lg">
+                        Select File
+                    </button>
+                </div>
+
+                <!-- Splitting Mode Selector -->
+                <div class="p-6 bg-slate-800 rounded-xl shadow-lg">
+                    <h2 class="text-xl font-semibold mb-4 text-indigo-300">Splitting Mode</h2>
+                    <div class="flex space-x-4">
+                        <button id="mode-grid" onclick="setMode('grid')" class="flex-1 py-2 rounded-lg font-medium border-2 border-transparent transition" data-mode="grid">
+                            Grid Split (Even)
+                        </button>
+                        <button id="mode-custom" onclick="setMode('custom')" class="flex-1 py-2 rounded-lg font-medium border-2 border-transparent transition" data-mode="custom">
+                            Custom Split (Asymmetric)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Grid/Custom Controls -->
+                <div id="grid-controls" class="p-6 bg-slate-800 rounded-xl shadow-lg space-y-4">
+                    <h2 class="text-xl font-semibold mb-4 text-indigo-300">Grid Settings</h2>
+                    <div class="flex space-x-4">
+                        <div class="flex-1">
+                            <label for="rows" class="block text-sm font-medium text-slate-300">Rows</label>
+                            <input type="number" id="rows" value="3" min="1" max="10" onchange="updateSplitsFromInput()" class="w-full mt-1 p-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 text-white">
+                        </div>
+                        <div class="flex-1">
+                            <label for="cols" class="block text-sm font-medium text-slate-300">Columns</label>
+                            <input type="number" id="cols" value="3" min="1" max="10" onchange="updateSplitsFromInput()" class="w-full mt-1 p-2 bg-slate-700 border border-slate-600 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 text-white">
+                        </div>
+                    </div>
+                    <button onclick="updateSplitsFromInput()" class="w-full px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-white font-medium transition shadow-lg">
+                        Apply Grid
+                    </button>
+                </div>
+
+                <div id="custom-controls" class="p-6 bg-slate-800 rounded-xl shadow-lg space-y-4 hidden">
+                    <h2 class="text-xl font-semibold mb-4 text-indigo-300">Custom Tools</h2>
+                    <p class="text-sm text-slate-400">Drag the lines in the preview above to create custom divisions.</p>
+                    <div class="flex space-x-2">
+                         <button onclick="addSplit('h')" class="flex-1 px-3 py-2 text-sm bg-purple-600 hover:bg-purple-700 rounded-lg text-white font-medium transition">
+                            + Horizontal Split
+                        </button>
+                        <button onclick="addSplit('v')" class="flex-1 px-3 py-2 text-sm bg-purple-600 hover:bg-purple-700 rounded-lg text-white font-medium transition">
+                            + Vertical Split
+                        </button>
+                    </div>
+                    <button onclick="resetSplits()" class="w-full px-4 py-2 text-sm bg-red-600 hover:bg-red-700 rounded-lg text-white font-medium transition">
+                        Reset All Splits
+                    </button>
+                </div>
+
+                <!-- Download All Button -->
+                <button id="download-all-btn" onclick="downloadAll()" disabled class="w-full px-4 py-4 text-xl bg-green-600 hover:bg-green-700 rounded-xl text-white font-bold transition shadow-2xl disabled:opacity-50">
+                    Download All Pieces (ZIP)
+                </button>
+            </div>
+
+            <!-- Column 2 & 3: Canvas and Output -->
+            <div class="lg:col-span-2 space-y-6">
+                <!-- Canvas Display Area -->
+                <div id="canvas-container" class="relative overflow-hidden aspect-[16/9]" style="max-width: 100%;">
+                    <canvas id="image-canvas" class="rounded-lg"></canvas>
+                    <canvas id="overlay-canvas" class="rounded-lg"></canvas>
+                    <p id="canvas-placeholder" class="absolute inset-0 flex items-center justify-center text-center text-slate-500 text-xl pointer-events-none p-4">
+                        Upload an image to start splitting.
+                    </p>
+                </div>
+
+                <!-- Output Display Area -->
+                <div id="output-area" class="p-6 bg-slate-800 rounded-xl shadow-lg min-h-32">
+                    <h2 class="text-xl font-semibold mb-4 text-indigo-300">Output Pieces (Click to Download)</h2>
+                    <p id="output-placeholder" class="text-slate-400">
+                        The split image sections will appear here once an image is loaded and a split is applied.
+                    </p>
+                    <div id="piece-grid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mt-4">
+                        <!-- Image pieces will be inserted here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let originalImage = null;
+        let originalFileName = '';
+        let currentMode = 'grid'; // 'grid' or 'custom'
+        let hSplits = []; // Normalized Y positions (0.0 to 1.0) for horizontal lines
+        let vSplits = []; // Normalized X positions (0.0 to 1.0) for vertical lines
+
+        // Canvas elements
+        const imageCanvas = document.getElementById('image-canvas');
+        const overlayCanvas = document.getElementById('overlay-canvas');
+        const imageCtx = imageCanvas.getContext('2d');
+        const overlayCtx = overlayCanvas.getContext('2d');
+        const container = document.getElementById('canvas-container');
+        const dragArea = document.getElementById('drag-area');
+
+        // State for dragging
+        let isDragging = false;
+        let activeLineType = null; // 'h' or 'v'
+        let activeLineIndex = -1;
+
+        // --- Utility Functions ---
+
+        /** Displays a temporary message box for feedback */
+        function showMessage(text, isError = false) {
+            const msgBox = document.getElementById('message-box');
+            msgBox.textContent = text;
+            msgBox.className = 'message-box show';
+            msgBox.style.backgroundColor = isError ? '#ef4444' : '#10b981'; // Red or Green
+            msgBox.style.color = 'white';
+
+            setTimeout(() => {
+                msgBox.className = 'message-box';
+            }, 3000);
+        }
+
+        /** Converts a data URL to a downloadable file */
+        function downloadFile(dataUrl, filename) {
+            const link = document.createElement('a');
+            link.href = dataUrl;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        /** Crops a section of the image and returns a data URL. */
+        function cropImage(img, sx, sy, sw, sh, quality = 0.9, format = 'image/png') {
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = sw;
+            tempCanvas.height = sh;
+            const ctx = tempCanvas.getContext('2d');
+            
+            // Draw the sub-section of the original image onto the new canvas
+            ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+
+            // Convert canvas to data URL
+            return tempCanvas.toDataURL(format, quality);
+        }
+
+        /** Generates the split coordinates based on current hSplits and vSplits */
+        function generateSplits(img) {
+            if (!img) return [];
+
+            const imageWidth = img.naturalWidth;
+            const imageHeight = img.naturalHeight;
+
+            // Sort and add 0 and 1.0 to ensure boundary
+            const hPos = [0, ...hSplits.sort((a, b) => a - b), 1.0];
+            const vPos = [0, ...vSplits.sort((a, b) => a - b), 1.0];
+
+            const pieces = [];
+            let pieceCount = 0;
+
+            for (let i = 0; i < hPos.length - 1; i++) {
+                const sy_norm = hPos[i];
+                const sh_norm = hPos[i+1] - sy_norm;
+
+                for (let j = 0; j < vPos.length - 1; j++) {
+                    const sx_norm = vPos[j];
+                    const sw_norm = vPos[j+1] - sx_norm;
+                    
+                    const sx = Math.round(sx_norm * imageWidth);
+                    const sy = Math.round(sy_norm * imageHeight);
+                    const sw = Math.round(sw_norm * imageWidth);
+                    const sh = Math.round(sh_norm * imageHeight);
+                    
+                    if (sw > 0 && sh > 0) {
+                        pieceCount++;
+                        pieces.push({
+                            x: sx,
+                            y: sy,
+                            width: sw,
+                            height: sh,
+                            index: pieceCount
+                        });
+                    }
+                }
+            }
+            return pieces;
+        }
+
+
+        // --- UI State Management ---
+
+        function updateUIState() {
+            // Toggle controls visibility
+            document.getElementById('grid-controls').classList.toggle('hidden', currentMode !== 'grid');
+            document.getElementById('custom-controls').classList.toggle('hidden', currentMode !== 'custom');
+
+            // Set button styles
+            document.getElementById('mode-grid').classList.remove('bg-indigo-600', 'text-white', 'border-indigo-500');
+            document.getElementById('mode-custom').classList.remove('bg-indigo-600', 'text-white', 'border-indigo-500');
+
+            if (currentMode === 'grid') {
+                document.getElementById('mode-grid').classList.add('bg-indigo-600', 'text-white');
+                document.getElementById('mode-custom').classList.add('border-slate-500', 'text-slate-300');
+            } else {
+                document.getElementById('mode-custom').classList.add('bg-indigo-600', 'text-white');
+                document.getElementById('mode-grid').classList.add('border-slate-500', 'text-slate-300');
+            }
+
+            // Disable download button if no image is loaded
+            const pieces = generateSplits(originalImage);
+            const isDisabled = !originalImage || pieces.length === 0;
+            document.getElementById('download-all-btn').disabled = isDisabled;
+
+            // If an image is loaded, draw the canvases and output pieces
+            if (originalImage) {
+                drawCanvases();
+                renderOutputPieces(pieces);
+                document.getElementById('canvas-placeholder').classList.add('hidden');
+            } else {
+                document.getElementById('canvas-placeholder').classList.remove('hidden');
+                document.getElementById('piece-grid').innerHTML = '';
+                document.getElementById('output-placeholder').classList.remove('hidden');
+            }
+        }
+
+        function setMode(mode) {
+            currentMode = mode;
+            if (mode === 'grid') {
+                updateSplitsFromInput();
+            } else {
+                // If switching to custom, ensure a minimal 1x1 split
+                if (hSplits.length === 0 && vSplits.length === 0) {
+                    // Start with an empty, single block
+                    resetSplits();
+                }
+                updateUIState();
+            }
+        }
+
+        function resetSplits() {
+            hSplits = [];
+            vSplits = [];
+            updateUIState();
+        }
+
+        // --- Splitting Logic ---
+
+        function updateSplitsFromInput() {
+            const rows = parseInt(document.getElementById('rows').value) || 1;
+            const cols = parseInt(document.getElementById('cols').value) || 1;
+
+            if (rows < 1 || cols < 1) {
+                showMessage("Rows and columns must be at least 1.", true);
+                return;
+            }
+
+            // Generate even horizontal splits
+            hSplits = [];
+            for (let i = 1; i < rows; i++) {
+                hSplits.push(i / rows);
+            }
+
+            // Generate even vertical splits
+            vSplits = [];
+            for (let i = 1; i < cols; i++) {
+                vSplits.push(i / cols);
+            }
+
+            // Ensure mode is set to grid for visualization
+            currentMode = 'grid';
+            updateUIState();
+        }
+        
+        function addSplit(type) {
+            if (!originalImage) {
+                showMessage("Please upload an image first.", true);
+                return;
+            }
+            // Add a split line near the center
+            if (type === 'h') {
+                hSplits.push(0.5);
+            } else {
+                vSplits.push(0.5);
+            }
+            updateUIState();
+        }
+
+
+        // --- Canvas Drawing and Interactivity ---
+        
+        function drawImage() {
+            if (!originalImage) {
+                imageCtx.clearRect(0, 0, imageCanvas.width, imageCanvas.height);
+                return;
+            }
+
+            // Resize canvas to container size
+            const rect = container.getBoundingClientRect();
+            imageCanvas.width = rect.width;
+            imageCanvas.height = rect.height;
+
+            // Calculate draw parameters to maintain aspect ratio and fit/cover
+            const iW = originalImage.naturalWidth;
+            const iH = originalImage.naturalHeight;
+            const cW = imageCanvas.width;
+            const cH = imageCanvas.height;
+            
+            // Draw image to fill the canvas container, preserving aspect ratio (cover)
+            let drawX = 0, drawY = 0, drawW = cW, drawH = cH;
+            const iRatio = iW / iH;
+            const cRatio = cW / cH;
+
+            if (iRatio > cRatio) {
+                // Image is wider than canvas ratio, fit height, cut sides
+                drawH = cH;
+                drawW = cH * iRatio;
+                drawX = (cW - drawW) / 2;
+                drawY = 0;
+            } else {
+                // Image is taller than canvas ratio, fit width, cut top/bottom
+                drawW = cW;
+                drawH = cW / iRatio;
+                drawX = 0;
+                drawY = (cH - drawH) / 2;
+            }
+
+            imageCtx.drawImage(originalImage, drawX, drawY, drawW, drawH);
+            
+            // Store the draw parameters globally for easy access in mouse events
+            imageCanvas._drawParams = { drawX, drawY, drawW, drawH, iW, iH, cW, cH };
+        }
+
+        function drawOverlay() {
+            // Resize canvas to container size
+            const rect = container.getBoundingClientRect();
+            overlayCanvas.width = rect.width;
+            overlayCanvas.height = rect.height;
+
+            overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+            if (!originalImage) return;
+
+            const { drawX, drawY, drawW, drawH } = imageCanvas._drawParams;
+            
+            overlayCtx.lineWidth = 4;
+
+            // Draw splits on the visible area of the image
+            [...hSplits, ...vSplits].forEach((pos, index) => {
+                const isHorizontal = index < hSplits.length;
+                const normalizedPos = pos;
+                
+                // Check if currently dragging this line
+                const isCurrent = isDragging && 
+                                 ((isHorizontal && activeLineType === 'h' && activeLineIndex === index) ||
+                                  (!isHorizontal && activeLineType === 'v' && activeLineIndex === index - hSplits.length));
+
+                overlayCtx.strokeStyle = isCurrent ? '#facc15' : 'rgba(79, 70, 229, 0.8)'; // Yellow when active, Indigo otherwise
+                overlayCtx.setLineDash(isHorizontal ? [8, 4] : [4, 8]); // Different dash for H/V for distinction
+                
+                if (isHorizontal) {
+                    const y = drawY + normalizedPos * drawH;
+                    overlayCtx.beginPath();
+                    overlayCtx.moveTo(drawX, y);
+                    overlayCtx.lineTo(drawX + drawW, y);
+                    overlayCtx.stroke();
+                } else {
+                    const x = drawX + normalizedPos * drawW;
+                    overlayCtx.beginPath();
+                    overlayCtx.moveTo(x, drawY);
+                    overlayCtx.lineTo(x, drawY + drawH);
+                    overlayCtx.stroke();
+                }
+            });
+
+            overlayCtx.setLineDash([]); // Reset line dash
+        }
+
+        function drawCanvases() {
+            drawImage();
+            drawOverlay();
+        }
+
+        // --- Output Rendering ---
+
+        function renderOutputPieces(pieces) {
+            const outputGrid = document.getElementById('piece-grid');
+            const outputPlaceholder = document.getElementById('output-placeholder');
+            outputGrid.innerHTML = '';
+
+            if (pieces.length === 0) {
+                outputPlaceholder.classList.remove('hidden');
+                return;
+            }
+
+            outputPlaceholder.classList.add('hidden');
+
+            pieces.forEach((piece, index) => {
+                const dataUrl = cropImage(
+                    originalImage, 
+                    piece.x, 
+                    piece.y, 
+                    piece.width, 
+                    piece.height,
+                    0.9,
+                    originalImage.fileType // Use the original file type for output
+                );
+
+                const pieceElement = document.createElement('div');
+                pieceElement.className = 'bg-slate-700 rounded-lg p-2 flex flex-col items-center shadow-md hover:ring-2 ring-indigo-500 cursor-pointer transition';
+                pieceElement.onclick = () => {
+                    const fileExtension = originalImage.fileType.split('/')[1].replace('jpeg', 'jpg');
+                    downloadFile(dataUrl, `${originalFileName}_piece_${piece.index}.${fileExtension}`);
+                };
+                
+                const img = document.createElement('img');
+                img.src = dataUrl;
+                img.alt = `Image Piece ${piece.index}`;
+                img.className = 'w-full h-auto rounded object-cover aspect-square';
+                
+                const label = document.createElement('span');
+                label.className = 'mt-2 text-sm text-slate-300 font-semibold';
+                label.textContent = `Piece ${piece.index}`;
+                
+                pieceElement.appendChild(img);
+                pieceElement.appendChild(label);
+                outputGrid.appendChild(pieceElement);
+            });
+        }
+
+        // --- Image Loading and Resizing ---
+        
+        function handleImageLoad(img) {
+            originalImage = img;
+            
+            // Set container aspect ratio to match the image
+            container.style.aspectRatio = `${img.naturalWidth} / ${img.naturalHeight}`;
+
+            // Reset splits to a default 3x3 grid when a new image is loaded
+            currentMode = 'grid';
+            document.getElementById('rows').value = 3;
+            document.getElementById('cols').value = 3;
+            updateSplitsFromInput();
+            
+            updateUIState();
+            showMessage("Image loaded successfully. Ready to split!");
+        }
+
+        function processFile(file) {
+            if (!file.type.startsWith('image/')) {
+                showMessage("The file is not a valid image type (PNG, JPEG, WebP).", true);
+                return;
+            }
+            if (file.size > 10 * 1024 * 1024) { // 10MB limit
+                showMessage("File size exceeds 10MB limit.", true);
+                return;
+            }
+
+            originalFileName = file.name.split('.').slice(0, -1).join('.');
+            
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    // Attach file type info to the image object for later download
+                    img.fileType = file.type; 
+                    handleImageLoad(img);
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+        
+        // --- Drag/Drop and Paste Handlers ---
+        
+        document.getElementById('file-input').addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                processFile(e.target.files[0]);
+            }
+        });
+
+        dragArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dragArea.classList.add('active');
+        });
+
+        dragArea.addEventListener('dragleave', () => {
+            dragArea.classList.remove('active');
+        });
+
+        dragArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dragArea.classList.remove('active');
+            if (e.dataTransfer.files.length > 0) {
+                processFile(e.dataTransfer.files[0]);
+            }
+        });
+        
+        // Paste listener for the entire body
+        document.body.addEventListener('paste', (e) => {
+            if (e.clipboardData && e.clipboardData.files.length > 0) {
+                processFile(e.clipboardData.files[0]);
+                e.preventDefault();
+            }
+        });
+
+        // --- Custom Split (Drag Interaction) Handlers ---
+
+        function findActiveLine(clientX, clientY) {
+            if (currentMode !== 'custom' || !originalImage || !imageCanvas._drawParams) return null;
+
+            const rect = overlayCanvas.getBoundingClientRect();
+            const mouseX = clientX - rect.left;
+            const mouseY = clientY - rect.top;
+            const { drawX, drawY, drawW, drawH } = imageCanvas._drawParams;
+            const tolerance = 15; // Pixel tolerance for clicking a line
+
+            // Check Horizontal lines
+            for (let i = 0; i < hSplits.length; i++) {
+                const y = drawY + hSplits[i] * drawH;
+                if (Math.abs(mouseY - y) < tolerance) {
+                    // Check if mouse is within the drawn bounds of the image
+                    if (mouseX >= drawX - tolerance && mouseX <= drawX + drawW + tolerance) {
+                        return { type: 'h', index: i };
+                    }
+                }
+            }
+
+            // Check Vertical lines
+            for (let i = 0; i < vSplits.length; i++) {
+                const x = drawX + vSplits[i] * drawW;
+                if (Math.abs(mouseX - x) < tolerance) {
+                    // Check if mouse is within the drawn bounds of the image
+                    if (mouseY >= drawY - tolerance && mouseY <= drawY + drawH + tolerance) {
+                        return { type: 'v', index: i };
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        overlayCanvas.addEventListener('mousedown', (e) => {
+            const activeLine = findActiveLine(e.clientX, e.clientY);
+            
+            if (activeLine) {
+                e.preventDefault();
+                isDragging = true;
+                activeLineType = activeLine.type;
+                activeLineIndex = activeLine.index;
+                overlayCanvas.style.cursor = activeLine.type === 'h' ? 'ns-resize' : 'ew-resize';
+                drawOverlay(); // Redraw immediately to highlight
+            } else {
+                overlayCanvas.style.cursor = 'grab';
+            }
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging || !originalImage || !imageCanvas._drawParams) return;
+            
+            e.preventDefault();
+            const rect = overlayCanvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+            const { drawX, drawY, drawW, drawH } = imageCanvas._drawParams;
+
+            let newValue;
+
+            if (activeLineType === 'h') {
+                // Calculate position relative to draw area, clamp between 0 and 1
+                newValue = Math.max(0, Math.min(1, (mouseY - drawY) / drawH));
+                hSplits[activeLineIndex] = newValue;
+            } else if (activeLineType === 'v') {
+                newValue = Math.max(0, Math.min(1, (mouseX - drawX) / drawW));
+                vSplits[activeLineIndex] = newValue;
+            }
+
+            drawCanvases(); // Redraw both image and lines
+            renderOutputPieces(generateSplits(originalImage));
+        });
+
+        document.addEventListener('mouseup', (e) => {
+            if (isDragging) {
+                e.preventDefault();
+                isDragging = false;
+                activeLineType = null;
+                activeLineIndex = -1;
+                overlayCanvas.style.cursor = 'grab';
+                updateUIState(); // Re-render and re-enable download button
+            }
+        });
+
+        overlayCanvas.addEventListener('mousemove', (e) => {
+            if (isDragging) return;
+            const activeLine = findActiveLine(e.clientX, e.clientY);
+            if (activeLine) {
+                 overlayCanvas.style.cursor = activeLine.type === 'h' ? 'ns-resize' : 'ew-resize';
+            } else {
+                overlayCanvas.style.cursor = 'grab';
+            }
+        });
+
+        // --- Download All (ZIP) Functionality ---
+
+        async function downloadAll() {
+            if (!originalImage) return showMessage("No image loaded to download.", true);
+
+            showMessage("Generating ZIP file... This may take a moment.");
+            
+            const pieces = generateSplits(originalImage);
+            if (pieces.length === 0) return showMessage("No valid splits defined.", true);
+
+            const zip = new JSZip();
+            const fileExtension = originalImage.fileType.split('/')[1].replace('jpeg', 'jpg');
+
+            try {
+                for (let i = 0; i < pieces.length; i++) {
+                    const piece = pieces[i];
+                    
+                    const dataUrl = cropImage(
+                        originalImage, 
+                        piece.x, 
+                        piece.y, 
+                        piece.width, 
+                        piece.height,
+                        1.0, // Use max quality for final downloads
+                        originalImage.fileType
+                    );
+
+                    // Extract base64 part
+                    const base64Data = dataUrl.split(',')[1];
+                    const filename = `${originalFileName}_piece_${piece.index}.${fileExtension}`;
+                    
+                    zip.file(filename, base64Data, { base64: true });
+                }
+
+                const zipContent = await zip.generateAsync({ type: "blob" });
+                
+                const zipFilename = `${originalFileName}_split_images.zip`;
+                
+                // Create a downloadable link for the blob
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(zipContent);
+                link.download = zipFilename;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                
+                showMessage(`Successfully created and downloaded ${zipFilename}!`);
+
+            } catch (error) {
+                console.error("ZIP Generation Error:", error);
+                showMessage("Failed to generate ZIP file.", true);
+            }
+        }
+
+        // --- Initialization ---
+        window.addEventListener('resize', () => {
+            // Debounce resize updates for performance
+            clearTimeout(window._resizeTimer);
+            window._resizeTimer = setTimeout(() => {
+                if (originalImage) {
+                    drawCanvases();
+                }
+            }, 100);
+        });
+        
+        // Initial setup
+        setMode('grid'); // Start in Grid mode
+    </script>
+</body>
+</html>
