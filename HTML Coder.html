@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HTML/CSS Editor with Component Library</title>
+    <!-- Load Tailwind CSS for easy styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* --- General Layout Setup (Flexbox for stacking panels vertically) --- */
+        body {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            margin: 0;
+            background-color: #f9fafb; /* bg-gray-50 */
+            font-family: sans-serif;
+        }
+
+        /* --- Top Panels (Code Editor and Live Preview) --- */
+        .top-panels-wrapper {
+            display: flex;
+            flex-grow: 1; /* Take up all remaining vertical space */
+            gap: 1rem;
+            padding: 1rem;
+            padding-bottom: 0; /* Adjust padding for cleaner look above library */
+        }
+        
+        .code-area, .preview-area {
+            flex: 1; /* Equal width for code and preview */
+            height: 100%;
+            border-radius: 0.5rem;
+            overflow: hidden; 
+            display: flex;
+            flex-direction: column; /* Stack header and content within the panel */
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+
+        /* --- Editor Styles --- */
+        textarea {
+            width: 100%;
+            flex-grow: 1; /* Makes the textarea fill all available vertical space */
+            font-family: 'Consolas', 'Monospace', monospace;
+            font-size: 14px;
+            padding: 1rem;
+            resize: none;
+            outline: none;
+            border: none;
+            /* USER REQUEST: Background set to white */
+            background-color: #FFFFFF; 
+            /* Text color changed to dark for readability on white background */
+            color: #1e1e1e; 
+            line-height: 1.5;
+            /* Caret color changed to dark for readability on white background */
+            caret-color: #1e1e1e; 
+        }
+
+        /* --- Preview Styles --- */
+        iframe {
+            width: 100%;
+            flex-grow: 1; /* Makes the iframe fill all available vertical space */
+            border: none;
+            background-color: white;
+        }
+
+        /* --- Panel Headers --- */
+        .panel-header {
+            font-weight: 600; /* sm:font-semibold */
+            padding: 0.5rem 1rem;
+            background-color: #4b5563; /* bg-gray-700 */
+            color: #f3f4f6; /* text-gray-200 */
+            flex-shrink: 0;
+            border-top-left-radius: 0.5rem;
+            border-top-right-radius: 0.5rem;
+        }
+
+        /* --- Bottom Library Container --- */
+        .library-container {
+            flex-shrink: 0; /* Prevent the library from shrinking */
+            padding: 1rem;
+            margin: 1rem;
+            margin-top: 0;
+            background-color: #ffffff;
+            border-radius: 0.5rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header (Run Code button removed) -->
+    <header class="bg-indigo-700 shadow-lg p-4 text-white flex justify-between items-center flex-shrink-0">
+        <h1 class="text-2xl font-bold tracking-tight">Interactive Form Element Builder</h1>
+    </header>
+
+    <!-- Top Panels: 2-Sided Layout (Code and Preview) -->
+    <div class="top-panels-wrapper">
+        
+        <!-- Left Panel: Code Editor -->
+        <div class="code-area">
+            <h2 class="panel-header">HTML/CSS Code</h2>
+            <textarea id="codeEditor" spellcheck="false" placeholder="Write your HTML and CSS code here..."></textarea>
+        </div>
+
+        <!-- Right Panel: Live Preview -->
+        <div class="preview-area">
+            <h2 class="panel-header">Live Preview</h2>
+            <iframe id="previewFrame" title="Code Preview"></iframe>
+        </div>
+    </div>
+    
+    <!-- Bottom Panel: Component Library (MOVED HERE) -->
+    <div id="bottom-library" class="library-container">
+        <h2 class="text-lg font-bold text-gray-800 flex-shrink-0">Component Library:</h2>
+        
+        <div class="flex items-center gap-2 flex-grow">
+            <label for="componentSelector" class="block text-sm font-medium text-gray-700 flex-shrink-0">Select Element:</label>
+            <select id="componentSelector" 
+                    class="block w-full max-w-sm pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md bg-gray-50 border-2">
+                <option value="" disabled selected>--- Select Component ---</option>
+                <!-- Options populated by JavaScript -->
+            </select>
+            <p class="text-sm text-gray-500 italic hidden sm:block">Loads code into the editor above.</p>
+        </div>
+    </div>
+
+    <script>
+        const editor = document.getElementById('codeEditor');
+        const previewFrame = document.getElementById('previewFrame');
+        // Removed: previewButton initialization
+        const componentSelector = document.getElementById('componentSelector');
+        let updateTimeout;
+        
+        // --- 1. Component Library Data (unchanged) ---
+        const components = [
+            { name: "Input (Text)", code: `<label for="fname" class="block text-sm font-medium text-gray-700">First name:</label>\n<input type="text" id="fname" name="fname" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border">` },
+            { name: "Select Dropdown", code: `<label for="cars" class="block text-sm font-medium text-gray-700">Choose a car:</label>\n<select id="cars" name="cars" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border-2">\n  <option value="volvo">Volvo</option>\n  <option value="saab">Saab</option>\n  <option value="fiat">Fiat</option>\n  <option value="audi">Audi</option>\n</select>` },
+            { name: "Select Visible Value (Size 3)", code: `<label for="cars" class="block text-sm font-medium text-gray-700">Choose a car (visible 3):</label>\n<select id="cars" name="cars" size="3" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border-2">\n  <option value="volvo">Volvo</option>\n  <option value="saab">Saab</option>\n  <option value="fiat">Fiat</option>\n  <option value="audi">Audi</option>\n</select>` },
+            { name: "Select Multiple", code: `<form class="space-y-4">\n  <label for="cars" class="block text-sm font-medium text-gray-700">Choose a car (multiple):</label>\n  <select id="cars" name="cars" size="4" multiple class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border-2">\n    <option value="volvo">Volvo</option>\n    <option value="saab">Saab</option>\n    <option value="fiat">Fiat</option>\n    <option value="audi">Audi</option>\n  </select>\n  <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700">Submit</button>\n</form>` },
+            { name: "Textarea (Multi-line)", code: `<textarea name="message" rows="4" cols="50" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border" placeholder="The cat was playing in the garden."></textarea>` },
+            { name: "Textarea (Custom Size)", code: `<form class="space-y-4">\n  <textarea name="message" style="width:200px; height:200px;" class="block rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border">The cat was playing in the garden.</textarea>\n  <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700">Submit</button>\n</form>` },
+            { name: "Button (Clickable)", code: `<button type="button" onclick="alert('Hello World!')" class="bg-yellow-500 text-gray-900 px-4 py-2 rounded-lg font-bold hover:bg-yellow-600 transition">Click Me!</button>` },
+            { name: "Fieldset and Legend", code: `<form>\n  <fieldset class="border border-gray-300 p-4 rounded-lg space-y-4">\n    <legend class="text-lg font-medium text-gray-900 px-2">Personalia:</legend>\n    <label for="fname" class="block text-sm font-medium text-gray-700">First name:</label>\n    <input type="text" id="fname" name="fname" value="John" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border">\n    <label for="lname" class="block text-sm font-medium text-gray-700">Last name:</label>\n    <input type="text" id="lname" name="lname" value="Doe" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border">\n    <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700">Submit</button>\n  </fieldset>\n</form>` },
+            { name: "Datalist (Suggestions)", code: `<form>\n  <label for="browser-choice" class="block text-sm font-medium text-gray-700">Choose a browser:</label>\n  <input list="browsers" id="browser-choice" name="browser-choice" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border">\n  <datalist id="browsers">\n    <option value="Edge">\n    <option value="Firefox">\n    <option value="Chrome">\n    <option value="Opera">\n    <option value="Safari">\n  </datalist>\n</form>` },
+            { name: "Output Element (Calculation)", code: `<form oninput="x.value=parseInt(a.value)+parseInt(b.value)" class="space-y-4 p-4 border rounded-lg">\n  <div class="flex items-center space-x-2">\n    <span class="text-gray-700">0</span>\n    <input type="range" id="a" name="a" value="50" min="0" max="100" class="flex-grow">\n    <span class="text-gray-700">100</span>\n  </div>\n  <div class="flex items-center space-x-2">\n    <span class="text-gray-700">+</span>\n    <input type="number" id="b" name="b" value="50" class="w-20 rounded-md border-gray-300 border p-1 text-center">\n    <span class="text-gray-700">=</span>\n    <output name="x" for="a b" class="text-lg font-bold text-indigo-600"></output>\n  </div>\n  <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700">Submit</button>\n</form>` },
+            { name: "Input Type Range (Slider)", code: `<form>\n  <label for="vol" class="block text-sm font-medium text-gray-700">Volume (between 0 and 50):</label>\n  <input type="range" id="vol" name="vol" min="0" max="50" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer range-lg">\n</form>` },
+            { name: "Search Field", code: `<form class="flex items-center space-x-2">\n  <label for="gsearch" class="sr-only">Search Google:</label>\n  <input type="search" id="gsearch" name="gsearch" placeholder="Search..." class="rounded-l-lg border-t mr-0 border-b border-l text-gray-800 border-gray-300 bg-white p-2 w-full focus:outline-none">\n  <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-r-lg hover:bg-indigo-700 transition">Search</button>\n</form>` },
+            { name: "Radio Buttons", code: `<form class="space-y-2">\n  <p class="font-medium text-gray-700">Favorite Language:</p>\n  <div class="flex items-center">\n    <input type="radio" id="html" name="fav_language" value="HTML" class="h-4 w-4 text-indigo-600 border-gray-300 focus:ring-indigo-500">\n    <label for="html" class="ml-3 block text-sm font-medium text-gray-700">HTML</label>\n  </div>\n  <div class="flex items-center">\n    <input type="radio" id="css" name="fav_language" value="CSS" class="h-4 w-4 text-indigo-600 border-gray-300 focus:ring-indigo-500">\n    <label for="css" class="ml-3 block text-sm font-medium text-gray-700">CSS</label>\n  </div>\n  <div class="flex items-center">\n    <input type="radio" id="javascript" name="fav_language" value="JavaScript" class="h-4 w-4 text-indigo-600 border-gray-300 focus:ring-indigo-500">\n    <label for="javascript" class="ml-3 block text-sm font-medium text-gray-700">JavaScript</label>\n  </div>\n</form>` },
+            { name: "Checkboxes", code: `<form class="space-y-2">\n  <p class="font-medium text-gray-700">Vehicles Owned:</p>\n  <div class="flex items-center">\n    <input type="checkbox" id="vehicle1" name="vehicle1" value="Bike" class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">\n    <label for="vehicle1" class="ml-3 block text-sm font-medium text-gray-700">I have a bike</label>\n  </div>\n  <div class="flex items-center">\n    <input type="checkbox" id="vehicle2" name="vehicle2" value="Car" class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">\n    <label for="vehicle2" class="ml-3 block text-sm font-medium text-gray-700">I have a car</label>\n  </div>\n  <div class="flex items-center">\n    <input type="checkbox" id="vehicle3" name="vehicle3" value="Boat" class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">\n    <label for="vehicle3" class="ml-3 block text-sm font-medium text-gray-700">I have a boat</label>\n  </div>\n</form>` }
+        ];
+
+        // --- 2. Core Editor Functions (updated) ---
+
+        function updatePreview() {
+            const code = editor.value;
+            const htmlContent = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>Preview</title>
+                    <style>
+                        /* Reset base styles for a cleaner preview */
+                        body { margin: 0; padding: 1rem; box-sizing: border-box; font-family: sans-serif; }
+                        /* Ensure form elements and labels are block elements for cleaner layout */
+                        form > * { margin-bottom: 0.5rem; } 
+                        form { display: block; }
+                    </style>
+                    <!-- Tailwind CSS import for the iframe content -->
+                    <script src="https://cdn.tailwindcss.com"><\/script>
+                </head>
+                <body>
+                    ${code}
+                </body>
+                </html>
+            `;
+            
+            previewFrame.contentWindow.document.open();
+            previewFrame.contentWindow.document.write(htmlContent);
+            previewFrame.contentWindow.document.close();
+        }
+
+        editor.addEventListener('input', () => {
+            clearTimeout(updateTimeout);
+            updateTimeout = setTimeout(updatePreview, 300); 
+        });
+
+        // Removed: previewButton.addEventListener('click', updatePreview);
+
+        // --- 3. Component Library Logic (unchanged) ---
+
+        function loadComponents() {
+            components.forEach((comp, index) => {
+                const option = document.createElement('option');
+                option.value = index; 
+                option.textContent = comp.name;
+                componentSelector.appendChild(option);
+            });
+            // Set initial code to the first component
+            editor.value = components[0].code;
+        }
+
+        componentSelector.addEventListener('change', (event) => {
+            const selectedIndex = parseInt(event.target.value);
+            if (selectedIndex >= 0) {
+                // Replace the entire editor content with the selected component's code
+                editor.value = components[selectedIndex].code;
+                // Run preview instantly
+                updatePreview();
+            }
+        });
+
+        // --- 4. Initialization (unchanged) ---
+
+        window.onload = () => {
+            loadComponents();
+            updatePreview();
+            editor.focus(); 
+        };
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
